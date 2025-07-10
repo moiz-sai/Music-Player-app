@@ -3,7 +3,6 @@ package org.lms;
 import com.formdev.flatlaf.extras.FlatSVGIcon;
 import com.formdev.flatlaf.fonts.roboto.FlatRobotoFont;
 import com.formdev.flatlaf.themes.FlatMacDarkLaf;
-
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
@@ -13,14 +12,15 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.util.ArrayList;
 import java.util.Hashtable;
-import com.formdev.flatlaf.FlatDarkLaf;
 import javax.swing.UIManager;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.plaf.basic.BasicSliderUI;
 
-class ModernGui{
+class ModernGui extends Component {
 
-    private static final Color FRAME_COLOR = Color.BLACK;
+    static final Color FRAME_COLOR = Color.BLACK;
     private static final Color TEXT_COLOR = Color.WHITE;
     private Song song;
     private MusicPlayer musicPlayer;
@@ -39,51 +39,70 @@ class ModernGui{
     JButton playButton;
     JButton pauseButton;
     private JSlider volumeSlider;
+    File selectedFile;
+
     public ModernGui() {
-        // initializeLookAndFeel();
+        preloadDefaultImages(); // Load default images once at startup
         initializeUI();
+        musicPlayer = new MusicPlayer(this);
     }
-    // Call this method in your constructor or initializeUI()
+    
+    //this method will set default images when no song is loaded or when song has no metadata
     private void preloadDefaultImages() {
         try {
-            defaultLogo = loadImage("E:/musicapp/modern-music-player/src/main/resources/com/myapp/icons/logo.png");
-            defaultBackground = loadImage("E:/musicapp/modern-music-player/src/main/resources/com/myapp/icons/backgroundimage.jpg");
+            this.defaultLogo = loadImageFromFile("E:/musicapp/modern-music-player/src/main/resources/com/myapp/icons/logo.png", 300, 300);
+            this.defaultBackground = loadImageFromFile("E:/musicapp/modern-music-player/src/main/resources/com/myapp/icons/backgroundimage.png", 600, 600);
 
             if (defaultLogo == null) {
                 System.err.println("Warning: Could not load default logo");
+                defaultLogo = createDefaultImage(300, 300);
             }
             if (defaultBackground == null) {
                 System.err.println("Warning: Could not load default background");
+                defaultBackground = createDefaultImage(600, 600);
             }
         } catch (Exception e) {
             System.err.println("Error preloading default images: " + e.getMessage());
             e.printStackTrace();
+            defaultLogo = createDefaultImage(300, 300);
+            defaultBackground = createDefaultImage(600, 600);
         }
     }
 
-    private void initializeLookAndFeel() {
+    //setting custom setting/size of image - ( used for default images )
+    private ImageIcon loadImageFromFile(String path, int width, int height) {
         try {
-            UIManager.setLookAndFeel(new FlatDarkLaf());
-        } catch (Exception ex) {
-            System.err.println("Failed to initialize dark theme");
+            File imageFile = new File(path);
+            if (imageFile.exists()) {
+                BufferedImage img = ImageIO.read(imageFile);
+                Image scaled = img.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+                return new ImageIcon(scaled);
+            }
+        } catch (IOException e) {
+            System.out.println("Failed to load image: " + path + " - " + e.getMessage());
         }
+        return null;
     }
 
+    // this method initializes the frame and calling method that contain other components
     private void initializeUI() {
         frame = new JFrame("Music Player");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        //frame.getContentPane().setBackground(Color.WHITE);
+
         frame.setSize(600, 600);
-        backgroundPanel = new BackgroundPanel("E:/musicapp/modern-music-player/src/main/resources/com/myapp/icons/backgroundimage.png",0.4f);
+        backgroundPanel = new BackgroundPanel(defaultBackground);
         backgroundPanel.setLayout(new BorderLayout());
         frame.setContentPane(backgroundPanel);
-
-
+        frame.setLocationRelativeTo(null);
+        ImageIcon icon = new ImageIcon(getClass().getResource("/com/myapp/icons/logo.png"));
+        Image scaledImage = icon.getImage().getScaledInstance(96, 96, Image.SCALE_SMOOTH);
+        frame.setIconImage(scaledImage);
         fileChooser = new JFileChooser();
         fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("MP3 Files", "mp3"));
         fileChooser.setCurrentDirectory(new File(System.getProperty("user.music", System.getProperty("user.home", ".") + "/Music")));
         fileChooser.setAcceptAllFileFilterUsed(false);
 
+        musicPlayer = new MusicPlayer(this);
         setupToolBar(fileChooser);
         setupCenterPanel();
         setupControlButtons();
@@ -92,9 +111,20 @@ class ModernGui{
         frame.setVisible(true);
     }
 
+    /*BackgroundPanel class is used to define background Image and its setting and it is used to set the opacity of background image
+    *and alpha is used to control it's opacity the higher the alpha the more bright images will be
+     */
+
     class BackgroundPanel extends JPanel {
         private Image backgroundImage;
-        private float alpha = 1.0f; // 1.0f = fully opaque, 0.0f = fully transparent
+        private float alpha = 0.4f; // Default alpha
+
+        // Modified constructor to accept ImageIcon
+        public BackgroundPanel(ImageIcon imageIcon) {
+            if (imageIcon != null) {
+                this.backgroundImage = imageIcon.getImage();
+            }
+        }
 
         public BackgroundPanel(String imagePath) {
             try {
@@ -109,7 +139,6 @@ class ModernGui{
             this.alpha = alpha;
         }
 
-        // ADD THESE NEW METHODS:
         public void setBackgroundImage(String imagePath) {
             try {
                 backgroundImage = ImageIO.read(new File(imagePath));
@@ -149,57 +178,153 @@ class ModernGui{
         }
     }
 
+    //toolbar to combine load song and playlist functionality
 
     private void setupToolBar(JFileChooser fileChooser) {
-        JToolBar toolBar = new JToolBar();
-        toolBar.setFloatable(false);
 
+        //main toolbar panel in which next components are added
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEADING, 10, 10));
+        toolbar.setOpaque(false);
+
+
+        //menuBar is used to hold songMenu component
         JMenuBar menuBar = new JMenuBar();
+        menuBar.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        menuBar.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        menuBar.setOpaque(false);
+        menuBar.setBackground(new Color(0,0,0,0));
 
 
-        JMenu songMenu = new JMenu("Song");
-        loadSongs = new JMenuItem("Load Songs");
-        loadSongs.addActionListener(new ActionListener() {
+        JButton songMenu = new JButton();
+        songMenu.setFocusable(false);
+        songMenu.setBackground(new Color(0,0,0,0));
+        songMenu.setIcon(new FlatSVGIcon("com/myapp/icons/music.svg", 24, 24));
+        songMenu.setToolTipText("Songs");
+        songMenu.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                songMenu.setBackground(new Color(0x383838));
+            }
+            public void mouseExited(MouseEvent e) {
+                songMenu.setBackground(new Color(0x0383838, true));
+            }
+        });
+
+        songMenu.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 int result = fileChooser.showOpenDialog(frame);
 
                 if (result == JFileChooser.APPROVE_OPTION) {
-                    File selectedFile = fileChooser.getSelectedFile();
-                    song = new Song(selectedFile.getAbsolutePath());
+                    selectedFile = fileChooser.getSelectedFile();
+                    
+                    //while the thread is loading, these will be our indicator text
+                    songTitle.setText("Loading...");
+                    songArtist.setText("Please wait...");
 
-                    // Update UI
-                    updateSongArtwork(); // i'm calling this when song is selected method
-                    songTitle.setText(song.getSongTitle() != null && !song.getSongTitle().isEmpty() ? song.getSongTitle() : selectedFile.getName());
-                    songArtist.setText(song.getSongArtist() != null ? song.getSongArtist() : "Unknown Artist");
+                    // loading this song in another thread will stop freezing when update Song artwork cannot find metadata of a song
+                    SwingUtilities.invokeLater(() -> {
+                        song = new Song(selectedFile.getAbsolutePath());
+                        
+                        // Update UI
+                        updateSongArtwork(song);
+                        updatetitles(song);
 
-                    //stop music
-                    if (musicPlayer != null) {
-                        musicPlayer.stopSong();
-                    }
-                    // Play music
-                    if (musicPlayer == null) {
-                        musicPlayer = new MusicPlayer(ModernGui.this);
-                    }
-                    musicPlayer.loadSong(song);
-                    updatePlaybackSlider(song);
-                    playerSlider.setValue(0);
-                    enablePauseButtonandDisablePlayButton();
 
+                        if (musicPlayer != null) {
+                            musicPlayer.stopSong();
+                        }
+                        if (musicPlayer == null) {
+                            musicPlayer = new MusicPlayer(ModernGui.this);
+                        }
+
+                        musicPlayer.loadSong(song);
+                        updatePlaybackSlider(song);
+                        playerSlider.setValue(0);
+                        enablePauseButtonandDisablePlayButton();
+                    });
                 }
             }
         });
-        songMenu.add(loadSongs);
         menuBar.add(songMenu);
 
-        JMenu playlistMenu = new JMenu("Playlist");
-        playlistMenu.add(new JMenuItem("Create Playlist"));
-        playlistMenu.add(new JMenuItem("Load Playlist"));
+        // Playlist Menu with SVG icon (icon-only, no text)
+        JMenu playlistMenu = new JMenu();
+        playlistMenu.setOpaque(false);
+        playlistMenu.setFocusable(false);
+        playlistMenu.setIcon(new FlatSVGIcon("com/myapp/icons/playlist.svg", 24, 24));
+        playlistMenu.setToolTipText("Playlist");
+
+        JMenuItem createPlaylist = new JMenuItem("Create Playlist");
+        createPlaylist.setIcon(new FlatSVGIcon("com/myapp/icons/plus.svg", 16, 16));
+        createPlaylist.setToolTipText("Create Playlist");
+
+        createPlaylist.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                new MusicPlaylistDialog(ModernGui.this).setVisible(true);
+            }
+        });
+
+        JMenuItem loadPlaylist = new JMenuItem("Load Playlist");
+        loadPlaylist.setIcon(new FlatSVGIcon("com/myapp/icons/load.svg", 16, 16));
+        loadPlaylist.setToolTipText("Load Playlist");
+
+        loadPlaylist.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Playlist Text Files", "txt"));
+            chooser = new JFileChooser(new File(System.getProperty("user.home") + "/Music"));
+            chooser.setFileFilter(new FileNameExtensionFilter("Text Playlist Files (*.txt)", "txt"));
+            chooser.setAcceptAllFileFilterUsed(false);
+
+            int result = chooser.showOpenDialog(this);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File selectedFile = chooser.getSelectedFile();
+                loadPlaylistFromFile(selectedFile);
+            }
+        });
+
+        playlistMenu.add(createPlaylist);
+        playlistMenu.add(loadPlaylist);
         menuBar.add(playlistMenu);
 
-        toolBar.add(menuBar);
-        frame.add(toolBar, BorderLayout.NORTH);
+        toolbar.add(menuBar);
+        frame.add(toolbar, BorderLayout.NORTH);
     }
-    private void enablePauseButtonandDisablePlayButton(){
+
+    private void loadPlaylistFromFile(File file) {
+
+        //array list is used to add song paths
+        ArrayList<String> paths = new ArrayList<>();
+
+        //read all the file paths
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                paths.add(line.trim());
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            System.out.println("Failed to load playlist.");
+            return;
+        }
+
+        if (paths.isEmpty()) {
+            System.out.println("Playlist is empty.");
+            return;
+        }
+
+        musicPlayer.loadPlaylistFromPaths(paths);
+        this.song = musicPlayer.getCurrentSong();
+        updatetitles(song);
+        updateSongArtwork(song);
+        updatePlaybackSlider(song);
+        playerSlider.setValue(0);
+        enablePauseButtonandDisablePlayButton();
+        System.out.println("Playlist loaded successfully!");
+    }
+
+    //these will help us control play/pause buttons when no song is loaded
+    public void enablePauseButtonandDisablePlayButton(){
         if (playButton != null && pauseButton != null) {
             playButton.setVisible(false);
             playButton.setEnabled(false);
@@ -208,8 +333,7 @@ class ModernGui{
             pauseButton.setEnabled(true);
         }
     }
-
-    private void enablePlayButtonandDisablePauseButton(){
+    public void enablePlayButtonandDisablePauseButton(){
         if (playButton != null && pauseButton != null) {
             playButton.setVisible(true);
             playButton.setEnabled(true);
@@ -219,21 +343,31 @@ class ModernGui{
         }
     }
 
+    //this song will update titles and artist name if available
+    public void updatetitles(Song song){
+        this.song = song;
+        if (this.song != null) {
+            songTitle.setText(this.song.getSongTitle());
+            songArtist.setText(this.song.getSongArtist());
+        }
+    }
 
+    //set slider value to the songs total frame
     public void setPlayerSliderValue(int frame){
         playerSlider.setValue(frame);
     }
+
+    //the main centerPanel used to show song artwork, title, and artist name while showing the background image
     private void setupCenterPanel() {
         JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setOpaque(false); // transparency
+        centerPanel.setOpaque(false);
 
-        // Simple content panel — NOT BackgroundPanel
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setOpaque(false); // transparency
+        contentPanel.setOpaque(false);
 
-        // Song image
-        songImage = new JLabel(loadImage("E:/musicapp/modern-music-player/src/main/resources/com/myapp/icons/logo.png"));
+        // Song image use preloaded default
+        songImage = new JLabel(defaultLogo);
         songImage.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         // Song title
@@ -253,6 +387,7 @@ class ModernGui{
         // Slider
         playerSlider = new JSlider(0, 100, 0);
         playerSlider.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        //this is used to set Custom basic slider and rendering its length and UI and color
         playerSlider.setUI(new BasicSliderUI(playerSlider) {
             @Override
             public void paintTrack(Graphics g) {
@@ -281,19 +416,27 @@ class ModernGui{
         });
         playerSlider.setOpaque(false);
         playerSlider.setFocusable(false);
-        playerSlider.setPreferredSize(new Dimension(400, 60));
-        playerSlider.setMaximumSize(new Dimension(400, 60));
+        playerSlider.setPreferredSize(new Dimension(300, 50));
+        playerSlider.setMaximumSize(new Dimension(300, 50));
         playerSlider.setAlignmentX(Component.CENTER_ALIGNMENT);
         playerSlider.addMouseListener(new MouseAdapter() {
             public void mousePressed(MouseEvent e) {
-                if (musicPlayer != null) musicPlayer.pauseSong();
+                if (musicPlayer != null) {
+                    musicPlayer.pauseSong();
+                }
             }
             public void mouseReleased(MouseEvent e) {
-                if (musicPlayer != null) {
-                    int frame = ((JSlider) e.getSource()).getValue();
-                    musicPlayer.setCurrentFrame(frame);
+                if (musicPlayer != null && song != null) {
+                    JSlider source = (JSlider) e.getSource();
+                    int clickedFrame = source.getValue();
+
+                    int timeInMilliseconds = (int) (clickedFrame / song.getFrameRatePerMiliSeconds());
+
+                    musicPlayer.setCurrentFrame(clickedFrame);
+                    musicPlayer.setCurrentTimeinMili(timeInMilliseconds);
+
+                    playerSlider.setValue(clickedFrame);
                     musicPlayer.playCurrentSong();
-                    playerSlider.setValue(frame);
                     enablePauseButtonandDisablePlayButton();
                 }
             }
@@ -302,11 +445,11 @@ class ModernGui{
         // Add to contentPanel
         contentPanel.add(Box.createVerticalGlue());
         contentPanel.add(songImage);
-        contentPanel.add(Box.createRigidArea(new Dimension(0, 15)));
+        contentPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         contentPanel.add(songTitle);
         contentPanel.add(Box.createRigidArea(new Dimension(0, 8)));
         contentPanel.add(songArtist);
-        contentPanel.add(Box.createRigidArea(new Dimension(0, 20)));
+        contentPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         contentPanel.add(playerSlider);
         contentPanel.add(Box.createVerticalGlue());
 
@@ -314,9 +457,12 @@ class ModernGui{
         frame.add(centerPanel, BorderLayout.CENTER);
     }
 
-    private void updatePlaybackSlider(Song song){
+    //used where song current song is replaced and will set the slider to the total frame of that song using frame countt
+    public void updatePlaybackSlider(Song song){
+        if (song == null || song.getMp3File() == null) return;
+        
         playerSlider.setMaximum(song.getMp3File().getFrameCount());
-        Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
+        Hashtable<Integer, JLabel> labelTable = new Hashtable<>(); //  this structure uses a key to identify and set beginning and ending of the song
         JLabel labelBeginning = new JLabel("00:00");
         labelBeginning.setFont(new Font("Dialog", Font.BOLD, 18));
         labelBeginning.setForeground(TEXT_COLOR);
@@ -330,23 +476,19 @@ class ModernGui{
 
         playerSlider.setLabelTable(labelTable);
         playerSlider.setPaintLabels(true);
-        UIManager.put("Slider.paintValue", false);  // Don't paint value text
-        UIManager.put("Slider.thumbWidth", 16);
-        UIManager.put("Slider.trackHeight", 4);
-        UIManager.put("Slider.trackBorderColor", new Color(200, 200, 200, 80)); // Soft track border
-        UIManager.put("Slider.trackFillColor", new Color(100, 200, 255)); // Customize if needed
     }
-    // Method to update the image when a song is selected
-    public void updateSongArtwork() {
+    
+
+    public void updateSongArtwork(Song song) {
         try {
             if (song != null) {
                 ImageIcon artwork = song.getSongArtwork();
                 if (artwork != null) {
-                    // Update the small song image
+                    //update the current song to is artwork if availaible
                     songImage.setIcon(artwork);
                     backgroundPanel.setBackgroundImage(artwork);
                 } else {
-                    // Song has no artwork - use preloaded defaults
+                    //fallback images
                     songImage.setIcon(defaultLogo);
                     backgroundPanel.setBackgroundImage(defaultBackground);
                 }
@@ -354,24 +496,22 @@ class ModernGui{
                 // No song loaded - use preloaded defaults
                 songImage.setIcon(defaultLogo);
                 backgroundPanel.setBackgroundImage(defaultBackground);
-             }
+            }
 
-            // Force repaint
+            //refreshes the images
             songImage.repaint();
             backgroundPanel.repaint();
-
 
         } catch (Exception e) {
             System.err.println("Error updating song artwork: " + e.getMessage());
             e.printStackTrace();
 
-            // Fallback to safe state
             songImage.setIcon(defaultLogo);
             backgroundPanel.setBackgroundImage(defaultBackground);
-            contentPanel.setBackgroundImage(defaultBackground);
         }
     }
 
+    //main play bak functionality of button
     private void setupControlButtons() {
         buttonPanel = new JPanel(new BorderLayout());
         buttonPanel.setPreferredSize(new Dimension(150, 70));
@@ -384,22 +524,38 @@ class ModernGui{
         JButton prevButton = new JButton(new FlatSVGIcon("com/myapp/icons/step-backward.svg", 32,32));
         prevButton.setBorderPainted(false);
         prevButton.setBackground(null);
-        prevButton.setContentAreaFilled(false);
-        prevButton.setFocusPainted(false);
-        prevButton.setOpaque(false);
         prevButton.setBackground(new Color(0, 0, 0, 0));
         prevButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        prevButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                prevButton.setBackground(new Color(0x383838));
+            }
+            public void mouseExited(MouseEvent e) {
+                prevButton.setBackground(new Color(0x0383838, true));
+            }
+        });
+        prevButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                musicPlayer.previousSong();
+            }
+        });
         buttonPanel2.add(prevButton);
 
         playButton = new JButton(new FlatSVGIcon("com/myapp/icons/play.svg", 32,32));
         playButton.setBorderPainted(false);
-        playButton.setBackground(null);
         playButton.setFocusable(false);
-        prevButton.setOpaque(false);
-        prevButton.setBackground(new Color(0, 0, 0, 0));
-        playButton.setContentAreaFilled(false);
-        playButton.setOpaque(false);
+        playButton.setBackground(new Color(0, 0, 0, 0));
         playButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        playButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                playButton.setBackground(new Color(0x383838));
+            }
+            public void mouseExited(MouseEvent e) {
+                playButton.setBackground(new Color(0x0383838, true));
+            }
+        });
         playButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -420,14 +576,19 @@ class ModernGui{
 
         pauseButton = new JButton(new FlatSVGIcon("com/myapp/icons/pause.svg", 32,32));
         pauseButton.setBorderPainted(false);
-        pauseButton.setBackground(null);
-        pauseButton.setOpaque(false);
         pauseButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         pauseButton.setBackground(new Color(0, 0, 0, 0));
         pauseButton.setFocusable(false);
-        pauseButton.setContentAreaFilled(false);
-        pauseButton.setOpaque(false);
         pauseButton.setVisible(false);
+        pauseButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                pauseButton.setBackground(new Color(0x383838));
+            }
+            public void mouseExited(MouseEvent e) {
+                pauseButton.setBackground(new Color(0x0383838, true));
+            }
+        });
         pauseButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -437,76 +598,48 @@ class ModernGui{
         });
         buttonPanel2.add(pauseButton);
 
-
         JButton forwardButton = new JButton(new FlatSVGIcon("com/myapp/icons/skip-forward.svg", 32, 32));
         forwardButton.setBorderPainted(false);
         forwardButton.setBackground(null);
-        forwardButton.setOpaque(false);
         forwardButton.setBackground(new Color(0, 0, 0, 0));
         forwardButton.setFocusable(false);
         forwardButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        forwardButton.setContentAreaFilled(false);
-        forwardButton.setOpaque(false);
+        forwardButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                musicPlayer.playNextSong();
+            }
+        });
+        forwardButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                forwardButton.setBackground(new Color(0x383838));
+            }
+            public void mouseExited(MouseEvent e) {
+                forwardButton.setBackground(new Color(0x0383838, true));
+            }
+        });
         buttonPanel2.add(forwardButton);
 
-
-
         //volume slider
-        volumeSlider = new JSlider(0,100,50);
-
-        volumeSlider = new JSlider(0, 100, 50); // range from 0 (mute) to 100 (full volume)
+        volumeSlider = new JSlider(0, 100, 50);
         volumeSlider.setPreferredSize(new Dimension(150, 30));
         volumeSlider.setOpaque(false);
         volumeSlider.setFocusable(false);
 
-// When slider changes, update volume in MusicPlayer
         volumeSlider.addChangeListener(e -> {
             float volume = volumeSlider.getValue() / 100f;
-            if (musicPlayer != null) {
-                //musicPlayer.setVolume(volume);
-            }
         });
-
-        buttonPanel2.add(volumeSlider);
-
-
+        
+        JPanel wp = new JPanel(new BorderLayout());
+        wp.setOpaque(false);
+        wp.setPreferredSize(new Dimension(130, 70));
+        buttonPanel.add(wp, BorderLayout.WEST); //  this panel centers the main platbac kbuttons
         buttonPanel.add(buttonPanel2, BorderLayout.CENTER);
-
+        buttonPanel.add(volumeSlider, BorderLayout.EAST);
         frame.add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    private ImageIcon loadImage(String path) {
-        try {
-            // Try loading from assets folder first
-            File imageFile = new File("assets/" + path);
-            if (!imageFile.exists()) {
-                imageFile = new File(path); // fallback to full path
-            }
-
-            BufferedImage img = ImageIO.read(imageFile);
-            Image scaled = img.getScaledInstance(300, 300, Image.SCALE_SMOOTH);
-            return new ImageIcon(scaled);
-        } catch (IOException e) {
-            System.out.println("Failed to load image: " + path + " - " + e.getMessage());
-            return createDefaultImage(300, 300); // Create placeholder
-        }
-    }
-
-    private ImageIcon loadImage(String path, int width, int height) {
-        try {
-            File imageFile = new File("assets/" + path);
-            if (!imageFile.exists()) {
-                imageFile = new File(path);
-            }
-
-            BufferedImage img = ImageIO.read(imageFile);
-            Image scaled = img.getScaledInstance(width, height, Image.SCALE_SMOOTH);
-            return new ImageIcon(scaled);
-        } catch (IOException e) {
-            System.out.println("Failed to load image: " + path + " - " + e.getMessage());
-            return createDefaultImage(width, height);
-        }
-    }
 
     // Create placeholder when image fails to load
     private ImageIcon createDefaultImage(int width, int height) {
@@ -520,8 +653,7 @@ class ModernGui{
         return new ImageIcon(img);
     }
 }
-
-
+//main method uses flatmacdarklaf for better gui
 public class ModernMusicPlayer {
     public static void main(String[] args) {
         FlatRobotoFont.install();
