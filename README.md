@@ -6,7 +6,7 @@ A polished Java Swing music player with a modern FlatLaf UI, customizable playli
 
 ## 🚀 Highlights
 
-- **Modern UI**: Powered by FlatLaf and FlatLaf Extras for light/dark themes, animation, and Roboto font :contentReference[oaicite:1]{index=1}.
+- **Modern UI**: Powered by FlatLaf and FlatLaf Extras for light/dark themes, animation, and Roboto font
 - **Audio Playback**: Uses BasicPlayer and JLayer to support MP3 and other formats.
 - **Metadata & Tags**: Displays artist, title, album artwork via jaudiotagger and mp3agic.
 - **Playlists**: Create, load, and save custom playlists as `.txt` files.
